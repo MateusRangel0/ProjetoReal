@@ -108,10 +108,11 @@ public class EnvUtil {
      * @return return list of 2-element arrays or an empty list if the given list is empty or null
      */
     public static List<String[]> splitOnLastColon(List<String> listToSplit) {
+    	List<String[]> ret = Collections.emptyList();
         if (listToSplit != null) {
-          return Lists.transform(listToSplit, SPLIT_ON_LAST_COLON);
+          ret = Lists.transform(listToSplit, SPLIT_ON_LAST_COLON);
         }
-        return Collections.emptyList();
+        return ret;
     }
 
     private static final Function<String, Iterable<String>> COMMA_SPLITTER = new Function<String, Iterable<String>>() {
@@ -286,12 +287,11 @@ public class EnvUtil {
      * @return the pure name or null if this is not a property name
      */
     public static String extractMavenPropertyName(String propName) {
+    	String ret = null;
         Matcher matcher = Pattern.compile(MAVEN_PROPERTY_REGEXP).matcher(propName);
         if (matcher.matches()) {
-            return matcher.group(1);
-        } else {
-            return null;
-        }
+            ret = matcher.group(1);
+        } return ret;
     }
 
     /**

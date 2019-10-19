@@ -23,11 +23,19 @@ public class CredentialHelperClient {
         this.log = log;
         credentialHelperName = "docker-credential-" + credentialsStore;
     }
-
+    
+    /**
+     * Getter for name
+     * @return
+     */
     public String getName() {
         return credentialHelperName;
     }
-
+    
+    /**
+     * Getter for version
+     * @return
+     */
     public String getVersion() {
         try {
             return new VersionCommand().getVersion();
@@ -35,7 +43,7 @@ public class CredentialHelperClient {
             return null;
         }
     }
-
+    
     public AuthConfig getAuthConfig(String registryToLookup) throws MojoExecutionException {
         try {
             JsonObject creds = new GetCommand().getCredentialNode(registryToLookup);
@@ -49,12 +57,13 @@ public class CredentialHelperClient {
     }
 
     private AuthConfig toAuthConfig(JsonObject credential){
-        if (credential == null) {
-            return null;
+    	AuthConfig ret = null;
+        if (credential != null) {
+        	String password = credential.get(CredentialHelperClient.SECRET_KEY).getAsString();
+        	String userKey = credential.get(CredentialHelperClient.USERNAME_KEY).getAsString();
+        	ret = new AuthConfig(userKey,password, null,null);
         }
-        String password = credential.get(CredentialHelperClient.SECRET_KEY).getAsString();
-        String userKey = credential.get(CredentialHelperClient.USERNAME_KEY).getAsString();
-        return new AuthConfig(userKey,password, null,null);
+        return ret;
     }
 
     // docker-credential-XXX version

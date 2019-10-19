@@ -76,7 +76,11 @@ public class AuthConfigFactory {
     public AuthConfigFactory(PlexusContainer container) {
         this.container = container;
     }
-
+    
+    /**
+     * Setter for log
+     * @param log
+     */
     public void setLog(Logger log) {
         this.log = log;
     }
@@ -119,7 +123,6 @@ public class AuthConfigFactory {
      */
     public AuthConfig createAuthConfig(boolean isPush, boolean skipExtendedAuth, Map authConfig, Settings settings, String user, String registry)
             throws MojoExecutionException {
-
         AuthConfig ret = createStandardAuthConfig(isPush, authConfig, settings, user, registry);
         if (ret != null) {
             if (registry == null || skipExtendedAuth) {
@@ -131,7 +134,6 @@ public class AuthConfigFactory {
                 throw new MojoExecutionException(e.getMessage(), e);
             }
         }
-
         // Finally check ~/.docker/config.json
         ret = getAuthConfigFromDockerConfig(registry);
         if (ret != null) {
@@ -142,8 +144,7 @@ public class AuthConfigFactory {
         log.debug("AuthConfig: no credentials found");
         return null;
     }
-
-
+    
     /**
      * Try various extended authentication method.  Currently only supports amazon ECR
      *
@@ -155,11 +156,12 @@ public class AuthConfigFactory {
      * @throws MojoExecutionException
      */
     private AuthConfig extendedAuthentication(AuthConfig standardAuthConfig, String registry) throws IOException, MojoExecutionException {
-        EcrExtendedAuth ecr = new EcrExtendedAuth(log, registry);
+        AuthConfig ret = standardAuthConfig;
+    	EcrExtendedAuth ecr = new EcrExtendedAuth(log, registry);
         if (ecr.isAwsRegistry()) {
-            return ecr.extendedAuth(standardAuthConfig);
+            ret = ecr.extendedAuth(standardAuthConfig);
         }
-        return standardAuthConfig;
+        return ret;
     }
 
     /**
@@ -205,7 +207,6 @@ public class AuthConfigFactory {
                 log.debug("AuthConfig: credentials from system properties");
                 return ret;
             }
-
             // Check for openshift authentication either from the plugin config or from system props
             if (lookupMode != LookupMode.REGISTRY) {
                 ret = getAuthConfigFromOpenShiftConfig(lookupMode, authConfigMap);
@@ -214,7 +215,6 @@ public class AuthConfigFactory {
                     return ret;
                 }
             }
-
             // Get configuration from global plugin config
             ret = getAuthConfigFromPluginConfiguration(lookupMode, authConfigMap);
             if (ret != null) {
@@ -222,7 +222,6 @@ public class AuthConfigFactory {
                 return ret;
             }
         }
-
         // ===================================================================
         // These are lookups based on registry only, so the direction (push or pull) doesn't matter:
 
@@ -232,7 +231,6 @@ public class AuthConfigFactory {
             log.debug("AuthConfig: credentials from ~/.m2/setting.xml");
             return ret;
         }
-
         // check EC2 instance role if registry is ECR
         if (EcrExtendedAuth.isAwsRegistry(registry)) {
             try {
@@ -248,7 +246,6 @@ public class AuthConfigFactory {
                 log.debug("AuthConfig: credentials from EC2 instance role");
                 return ret;
             }
-
             try {
                 ret = getAuthConfigFromECSTaskRole();
             } catch (ConnectTimeoutException ex) {
@@ -280,7 +277,6 @@ public class AuthConfigFactory {
             // on a non-EC2 instance we can fail early
             RequestConfig conf = RequestConfig.custom().setConnectionRequestTimeout(1000).setConnectTimeout(1000)
                     .setSocketTimeout(1000).build();
-
             // get instance role - if available
             HttpGet request = new HttpGet("http://169.254.169.254/latest/meta-data/iam/security-credentials");
             request.setConfig(conf);
@@ -291,14 +287,12 @@ public class AuthConfigFactory {
                     log.debug("No instance role found, return code was %d", response.getStatusLine().getStatusCode());
                     return null;
                 }
-
                 // read instance role
                 try (InputStream is = response.getEntity().getContent()) {
                     instanceRole = IOUtils.toString(is, StandardCharsets.UTF_8);
                 }
             }
             log.debug("Found instance role %s, getting temporary security credentials", instanceRole);
-
             // get temporary credentials
             request = new HttpGet("http://169.254.169.254/latest/meta-data/iam/security-credentials/"
                     + UrlEscapers.urlPathSegmentEscaper().escape(instanceRole));
@@ -310,7 +304,6 @@ public class AuthConfigFactory {
                     // no instance role found
                     return null;
                 }
-
                 // read instance role
                 try (Reader r = new InputStreamReader(response.getEntity().getContent(), StandardCharsets.UTF_8)) {
                     JsonObject securityCredentials = new Gson().fromJson(r, JsonObject.class);
@@ -326,8 +319,8 @@ public class AuthConfigFactory {
         }
     }
 
-    // if the local credentials don't contain user and password & is not a EC2 instance, use ECS Task instance
-    // role credentials
+    // if the local credentials don't contain user and password & is not a EC2 instance,
+    // use ECS Task instance role credentials
     private AuthConfig getAuthConfigFromECSTaskRole() throws IOException {
         log.debug("No user and password set for ECR, checking ECS Task role");
         try (CloseableHttpClient client = HttpClients.custom().useSystemProperties().build()) {
@@ -358,9 +351,9 @@ public class AuthConfigFactory {
                 try (Reader r = new InputStreamReader(response.getEntity().getContent(), StandardCharsets.UTF_8)) {
                     JsonObject securityCredentials = new Gson().fromJson(r, JsonObject.class);
 
-                    String user = securityCredentials.getAsJsonPrimitive("AccessKeyId").getAsString();
-                    String password = securityCredentials.getAsJsonPrimitive("SecretAccessKey").getAsString();
-                    String token = securityCredentials.getAsJsonPrimitive("Token").getAsString();
+                    final String user = securityCredentials.getAsJsonPrimitive("AccessKeyId").getAsString();
+                    final String password = securityCredentials.getAsJsonPrimitive("SecretAccessKey").getAsString();
+                    final String token = securityCredentials.getAsJsonPrimitive("Token").getAsString();
 
                     log.debug("Received temporary access key %s...", user.substring(0, 8));
                     return new AuthConfig(user, password, "none", token);
@@ -371,8 +364,8 @@ public class AuthConfigFactory {
 
     private AuthConfig getAuthConfigFromSystemProperties(LookupMode lookupMode) throws MojoExecutionException {
         Properties props = System.getProperties();
-        String userKey = lookupMode.asSysProperty(AUTH_USERNAME);
-        String passwordKey = lookupMode.asSysProperty(AUTH_PASSWORD);
+        final String userKey = lookupMode.asSysProperty(AUTH_USERNAME);
+        final String passwordKey = lookupMode.asSysProperty(AUTH_PASSWORD);
         if (props.containsKey(userKey)) {
             if (!props.containsKey(passwordKey)) {
                 throw new MojoExecutionException("No " + passwordKey + " provided for username " + props.getProperty(userKey));
@@ -388,7 +381,7 @@ public class AuthConfigFactory {
 
     private AuthConfig getAuthConfigFromOpenShiftConfig(LookupMode lookupMode, Map authConfigMap) throws MojoExecutionException {
         Properties props = System.getProperties();
-        String useOpenAuthModeProp = lookupMode.asSysProperty(AUTH_USE_OPENSHIFT_AUTH);
+        final String useOpenAuthModeProp = lookupMode.asSysProperty(AUTH_USE_OPENSHIFT_AUTH);
         // Check for system property
         if (props.containsKey(useOpenAuthModeProp)) {
             boolean useOpenShift = Boolean.valueOf(props.getProperty(useOpenAuthModeProp));
@@ -410,26 +403,23 @@ public class AuthConfigFactory {
     }
 
     private AuthConfig getAuthConfigFromPluginConfiguration(LookupMode lookupMode, Map authConfig) throws MojoExecutionException {
-        Map mapToCheck = getAuthConfigMapToCheck(lookupMode,authConfig);
-
+        AuthConfig ret = null;
+    	Map mapToCheck = getAuthConfigMapToCheck(lookupMode,authConfig);
         if (mapToCheck != null && mapToCheck.containsKey(AUTH_USERNAME)) {
             if (!mapToCheck.containsKey(AUTH_PASSWORD)) {
                 throw new MojoExecutionException("No 'password' given while using <authConfig> in configuration for mode " + lookupMode);
             }
             Map<String, String> cloneConfig = new HashMap<>(mapToCheck);
             cloneConfig.put(AUTH_PASSWORD, decrypt(cloneConfig.get(AUTH_PASSWORD)));
-            return new AuthConfig(cloneConfig);
-        } else {
-            return null;
-        }
+            ret = new AuthConfig(cloneConfig);
+        } return ret;
     }
-
+    
     private AuthConfig getAuthConfigFromSettings(Settings settings, String user, String registry) throws MojoExecutionException {
         Server defaultServer = null;
         Server found;
         for (Server server : settings.getServers()) {
             String id = server.getId();
-
             // Remember a default server without user as fallback for later
             if (defaultServer == null) {
                 defaultServer = checkForServer(server, id, registry, null);
@@ -449,7 +439,6 @@ public class AuthConfigFactory {
             return null;
         }
         String registryToLookup = registry != null ? registry : DOCKER_LOGIN_DEFAULT_REGISTRY;
-
         if (dockerConfig.has("credHelpers") || dockerConfig.has("credsStore")) {
             if (dockerConfig.has("credHelpers")) {
                 final JsonObject credHelpers = dockerConfig.getAsJsonObject("credHelpers");
@@ -461,11 +450,9 @@ public class AuthConfigFactory {
                 return extractAuthConfigFromCredentialsHelper(registryToLookup, dockerConfig.get("credsStore").getAsString());
             }
         }
-
         if (dockerConfig.has("auths")) {
             return extractAuthConfigFromAuths(registryToLookup, dockerConfig.getAsJsonObject("auths"));
         }
-
         return null;
     }
 
@@ -474,9 +461,9 @@ public class AuthConfigFactory {
         if (credentials == null || !credentials.has("auth")) {
             return null;
         }
-        String auth = credentials.get("auth").getAsString();
-        String identityToken = credentials.has("identitytoken") ? credentials.get("identitytoken").getAsString() : null;
-        String email = credentials.has(AUTH_EMAIL) && !credentials.get(AUTH_EMAIL).isJsonNull() ? credentials.get(AUTH_EMAIL).getAsString() : null;
+        final String auth = credentials.get("auth").getAsString();
+        final String identityToken = credentials.has("identitytoken") ? credentials.get("identitytoken").getAsString() : null;
+        final String email = credentials.has(AUTH_EMAIL) && !credentials.get(AUTH_EMAIL).isJsonNull() ? credentials.get(AUTH_EMAIL).getAsString() : null;
         return new AuthConfig(auth, email, identityToken);
     }
 
@@ -535,40 +522,35 @@ public class AuthConfigFactory {
     }
 
     private AuthConfig parseContext(Map kubeConfig, Map context) {
-        if (context == null) {
-            return null;
-        }
-        String userName = (String) context.get("user");
-        if (userName == null) {
-            return null;
-        }
-
-        List<Map> users = (List<Map>) kubeConfig.get("users");
-        if (users == null) {
-            return null;
-        }
-
-        for (Map userMap : users) {
-            if (userName.equals(userMap.get("name"))) {
-                return parseUser(userName, (Map) userMap.get("user"));
-            }
-        }
-        return null;
+    AuthConfig ret = null;
+    
+    if (context != null) {
+    	String userName = (String) context.get("user");
+    	 if (userName != null) {
+    		 
+    		 List<Map> users = (List<Map>) kubeConfig.get("users");
+    		 if (users != null) {
+    			 for (Map userMap : users) {
+    		            if (userName.equals(userMap.get("name"))) {
+    		                ret = parseUser(userName, (Map) userMap.get("user"));
+    		            }
+    		        }
+    		 	}
+    		 }
+    	 } return ret;
     }
 
     private AuthConfig parseUser(String userName, Map user) {
-        if (user == null) {
-            return null;
-        }
-        String token = (String) user.get("token");
-        if (token == null) {
-            return null;
-        }
-
-        // Strip off stuff after username
-        Matcher matcher = Pattern.compile("^([^/]+).*$").matcher(userName);
-        return new AuthConfig(matcher.matches() ? matcher.group(1) : userName,
-                              token, null, null);
+    	AuthConfig ret = null;
+    	if (user != null) {	
+    		String token = (String) user.get("token");
+    		if (token != null) {
+    			// Strip off stuff after username
+    	        Matcher matcher = Pattern.compile("^([^/]+).*$").matcher(userName);
+    	        ret = new AuthConfig(matcher.matches() ? matcher.group(1) : userName,
+    	                              token, null, null);
+    		}
+    	} return ret;
     }
 
     private AuthConfig validateMandatoryOpenShiftLogin(AuthConfig openShiftAuthConfig, String useOpenAuthModeProp) throws MojoExecutionException {
@@ -586,14 +568,14 @@ public class AuthConfigFactory {
 
 
     private Server checkForServer(Server server, String id, String registry, String user) {
-
+    	Server ret = null;
         String[] registries = registry != null ? new String[] { registry } : DEFAULT_REGISTRIES;
         for (String reg : registries) {
             if (id.equals(user == null ? reg : reg + "/" + user)) {
-                return server;
+                ret = server;
             }
         }
-        return null;
+        return ret;
     }
 
     private String decrypt(String password) throws MojoExecutionException {
@@ -619,14 +601,15 @@ public class AuthConfigFactory {
     }
 
     private String extractFromServerConfiguration(Object configuration, String prop) {
+    	String ret = null;
         if (configuration != null) {
-            Xpp3Dom dom = (Xpp3Dom) configuration;
-            Xpp3Dom element = dom.getChild(prop);
+            final Xpp3Dom dom = (Xpp3Dom) configuration;
+            final Xpp3Dom element = dom.getChild(prop);
             if (element != null) {
-                return element.getValue();
+                ret = element.getValue();
             }
         }
-        return null;
+        return ret;
     }
 
     // ========================================================================================
@@ -653,7 +636,11 @@ public class AuthConfigFactory {
         public String asSysProperty(String prop) {
             return sysPropPrefix + prop;
         }
-
+        
+        /**
+         * getter for ConfigMapKey
+         * @return
+         */
         public String getConfigMapKey() {
             return configMapKey;
         }

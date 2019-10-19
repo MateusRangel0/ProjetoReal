@@ -101,7 +101,7 @@ public class ContainerNamingUtil {
     }
 
 
-    // Filter out any older indexed containernames, keeping only the last one (i.e. with the highest index)
+    // Filter out any older indexed container names, keeping only the last one (i.e. with the highest index)
     private static Collection<Container> keepOnlyLastIndexedContainer(Collection<Container> existingContainers, final String partiallyApplied) {
 
         Collection<Container> result = new ArrayList<>(existingContainers);

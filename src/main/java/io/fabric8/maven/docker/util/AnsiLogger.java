@@ -110,7 +110,10 @@ public class AnsiLogger implements Logger {
     public boolean isDebugEnabled() {
         return log.isDebugEnabled();
     }
-
+    
+    /**
+     * Whether verbose is enabled.
+     */
     public boolean isVerboseEnabled() {
         return isVerbose;
     }
@@ -187,7 +190,7 @@ public class AnsiLogger implements Logger {
     }
 
     /**
-     * Finis progress meter. Must be always called if {@link #progressStart()} has been used.
+     * Finish progress meter. Must be always called if {@link #progressStart()} has been used.
      */
     public void progressFinished() {
         if (!batchMode && log.isInfoEnabled()) {
@@ -202,7 +205,11 @@ public class AnsiLogger implements Logger {
     private void flush() {
         System.out.flush();
     }
-
+    
+    /**
+     * Inicializer for color
+     * @param useColor
+     */
     private void initializeColor(boolean useColor) {
         this.useAnsi = useColor && !log.isDebugEnabled();
         if (useAnsi) {
@@ -292,14 +299,13 @@ public class AnsiLogger implements Logger {
 
     private String getEmphasisColor(String id) {
         Ansi.Color color = COLOR_MAP.get(id.toUpperCase());
+        String ret = "";
         if (color != null) {
-            return id.toLowerCase().equals(id) ?
+            ret =  id.toLowerCase().equals(id) ?
                 // lower case letter means bright color ...
                 ansi().fgBright(color).toString() :
                 ansi().fg(color).toString();
-        } else {
-            return "";
-        }
+        } return ret;
     }
 
     private void checkVerboseLoggingEnabled(String verbose) {
