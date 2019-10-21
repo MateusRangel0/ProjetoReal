@@ -149,8 +149,10 @@ public class RegistryService {
 
     public static class RegistryConfig implements Serializable {
 
-        private String registry;
+    	private static final long serialVersionUID = 1L;
 
+		private String registry;
+		
         private Settings settings;
 
         private AuthConfigFactory authConfigFactory;

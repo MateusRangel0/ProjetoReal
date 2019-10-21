@@ -388,8 +388,10 @@ public class WatchService {
      */
     public static class WatchContext implements Serializable {
 
-        private MojoParameters mojoParameters;
+    	private static final long serialVersionUID = 1L;
 
+		private MojoParameters mojoParameters;
+		
         private WatchMode watchMode;
 
         private int watchInterval;
