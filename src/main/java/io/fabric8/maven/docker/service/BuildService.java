@@ -112,53 +112,63 @@ public class BuildService {
         }
 
         if (buildConfig.getDockerArchive() != null) {
-            File tarArchive = buildConfig.getAbsoluteDockerTarPath(params);
-            String archiveImageName = getArchiveImageName(buildConfig, tarArchive);
-
-            long time = System.currentTimeMillis();
-
-            docker.loadImage(imageName, tarArchive);
-            log.info("%s: Loaded tarball in %s", buildConfig.getDockerArchive(), EnvUtil.formatDurationTill(time));
-
-            if(archiveImageName != null && !archiveImageName.equals(imageName)) {
-                docker.tag(archiveImageName, imageName, true);
-            }
-
-            return;
-        }
-
-        long time = System.currentTimeMillis();
-
-        File dockerArchive = archiveService.createArchive(imageName, buildConfig, params, log);
-        log.info("%s: Created %s in %s", imageConfig.getDescription(), dockerArchive.getName(), EnvUtil.formatDurationTill(time));
-
-        Map<String, String> mergedBuildMap = prepareBuildArgs(buildArgs, buildConfig);
-
-        // auto is now supported by docker, consider switching?
-        BuildOptions opts =
-                new BuildOptions(buildConfig.getBuildOptions())
-                        .dockerfile(getDockerfileName(buildConfig))
-                        .forceRemove(cleanupMode.isRemove())
-                        .noCache(noCache)
-                        .cacheFrom(buildConfig.getCacheFrom())
-                        .buildArgs(mergedBuildMap);
-        String newImageId = doBuildImage(imageName, dockerArchive, opts);
-        log.info("%s: Built image %s", imageConfig.getDescription(), newImageId);
-
-        if (oldImageId != null && !oldImageId.equals(newImageId)) {
-            try {
-                docker.removeImage(oldImageId, true);
-                log.info("%s: Removed old image %s", imageConfig.getDescription(), oldImageId);
-            } catch (DockerAccessException exp) {
-                if (cleanupMode == CleanupMode.TRY_TO_REMOVE) {
-                    log.warn("%s: %s (old image)%s", imageConfig.getDescription(), exp.getMessage(),
-                            (exp.getCause() != null ? " [" + exp.getCause().getMessage() + "]" : ""));
-                } else {
-                    throw exp;
-                }
-            }
+            buildWithDockerArchive(params, imageName, buildConfig);
+        } else {
+        	buildWithoutDockerArchive(imageConfig, params, noCache, buildArgs, imageName, buildConfig, oldImageId,
+					cleanupMode);	
         }
     }
+
+	private void buildWithDockerArchive(MojoParameters params, String imageName, BuildImageConfiguration buildConfig)
+			throws MojoExecutionException, DockerAccessException {
+		File tarArchive = buildConfig.getAbsoluteDockerTarPath(params);
+		String archiveImageName = getArchiveImageName(buildConfig, tarArchive);
+
+		long time = System.currentTimeMillis();
+
+		docker.loadImage(imageName, tarArchive);
+		log.info("%s: Loaded tarball in %s", buildConfig.getDockerArchive(), EnvUtil.formatDurationTill(time));
+
+		if(archiveImageName != null && !archiveImageName.equals(imageName)) {
+		    docker.tag(archiveImageName, imageName, true);
+		}
+	}
+
+	private void buildWithoutDockerArchive(ImageConfiguration imageConfig, MojoParameters params, boolean noCache,
+			Map<String, String> buildArgs, String imageName, BuildImageConfiguration buildConfig, String oldImageId,
+			CleanupMode cleanupMode) throws MojoExecutionException, DockerAccessException {
+		long time = System.currentTimeMillis();
+		
+		File dockerArchive = archiveService.createArchive(imageName, buildConfig, params, log);
+		log.info("%s: Created %s in %s", imageConfig.getDescription(), dockerArchive.getName(), EnvUtil.formatDurationTill(time));
+		
+		Map<String, String> mergedBuildMap = prepareBuildArgs(buildArgs, buildConfig);
+		
+		// auto is now supported by docker, consider switching?
+		BuildOptions opts =
+				new BuildOptions(buildConfig.getBuildOptions())
+				.dockerfile(getDockerfileName(buildConfig))
+				.forceRemove(cleanupMode.isRemove())
+				.noCache(noCache)
+				.cacheFrom(buildConfig.getCacheFrom())
+				.buildArgs(mergedBuildMap);
+		String newImageId = doBuildImage(imageName, dockerArchive, opts);
+		log.info("%s: Built image %s", imageConfig.getDescription(), newImageId);
+		
+		if (oldImageId != null && !oldImageId.equals(newImageId)) {
+			try {
+				docker.removeImage(oldImageId, true);
+				log.info("%s: Removed old image %s", imageConfig.getDescription(), oldImageId);
+			} catch (DockerAccessException exp) {
+				if (cleanupMode == CleanupMode.TRY_TO_REMOVE) {
+					log.warn("%s: %s (old image)%s", imageConfig.getDescription(), exp.getMessage(),
+							(exp.getCause() != null ? " [" + exp.getCause().getMessage() + "]" : ""));
+				} else {
+					throw exp;
+				}
+			}
+		}
+	}
 
     private Map<String, String> prepareBuildArgs(Map<String, String> buildArgs, BuildImageConfiguration buildConfig) {
         ImmutableMap.Builder<String, String> builder = ImmutableMap.<String, String>builder().putAll(buildArgs);

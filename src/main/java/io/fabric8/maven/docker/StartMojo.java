@@ -120,88 +120,84 @@ public class StartMojo extends AbstractDockerMojo {
     public synchronized void executeInternal(final ServiceHub hub) throws DockerAccessException,
                                                                           ExecException,
                                                                           MojoExecutionException {
-        if (skipRun) {
-            return;
-        }
-        getPluginContext().put(CONTEXT_KEY_START_CALLED, true);
+        if (!skipRun) {
+        	getPluginContext().put(CONTEXT_KEY_START_CALLED, true);
+        	this.follow = followLogs();
+        	
+        	QueryService queryService = hub.getQueryService();
+        	final RunService runService = hub.getRunService();
+        	
+        	PortMapping.PropertyWriteHelper portMappingPropertyWriteHelper = new PortMapping.PropertyWriteHelper(portPropertyFile);
+        	
+        	boolean success = false;
+        	
+        	final ExecutorService executorService = getExecutorService();
+        	final ExecutorCompletionService<StartedContainer> containerStartupService = new ExecutorCompletionService<>(executorService);
+        	
+        	try {
+        		
+        		success = startImages(hub, queryService, runService, portMappingPropertyWriteHelper,
+						containerStartupService);
+        	} catch (InterruptedException e) {
+        		log.warn("Interrupted");
+        		Thread.currentThread().interrupt();
+        		throw new MojoExecutionException("interrupted", e);
+        	} catch (IOException e) {
+        		throw new MojoExecutionException("I/O Error", e);
+        	} finally {
+        		shutdownExecutorService(executorService);
 
-        this.follow = followLogs();
-
-        QueryService queryService = hub.getQueryService();
-        final RunService runService = hub.getRunService();
-
-        PortMapping.PropertyWriteHelper portMappingPropertyWriteHelper = new PortMapping.PropertyWriteHelper(portPropertyFile);
-
-        boolean success = false;
-
-        final ExecutorService executorService = getExecutorService();
-        final ExecutorCompletionService<StartedContainer> containerStartupService = new ExecutorCompletionService<>(executorService);
-
-        try {
-            // All aliases which are provided in the image configuration:
-            final Set<String> imageAliases = new HashSet<>();
-            // Remember all aliases which has been started
-            final Set<String> startedContainerAliases = new HashSet<>();
-
-            // All images to to start
-            Queue<ImageConfiguration> imagesWaitingToStart = prepareStart(hub, queryService, runService, imageAliases);
-
-            // Queue of images to start as containers
-            final Queue<ImageConfiguration> imagesStarting = new ArrayDeque<>();
-
-            // Prepare the shutdown hook for stopping containers if we are going to follow them.  Add the hook before starting any
-            // of the containers so that partial or aborted starts will behave the same as fully-successful ones.
-            if (follow) {
-                runService.addShutdownHookForStoppingContainers(keepContainer, removeVolumes, autoCreateCustomNetworks);
-            }
-
-            // Loop until every image has been started and the start of all images has been completed
-            while (!hasBeenAllImagesStarted(imagesWaitingToStart, imagesStarting)) {
-
-                final List<ImageConfiguration> imagesReadyToStart =
-                    getImagesWhoseDependenciesHasStarted(imagesWaitingToStart, startedContainerAliases, imageAliases);
-
-                for (final ImageConfiguration image : imagesReadyToStart) {
-
-                    startImage(image, hub, containerStartupService, portMappingPropertyWriteHelper);
-
-                    // Move from waiting to starting status
-                    imagesStarting.add(image);
-                    imagesWaitingToStart.remove(image);
-
-                    if (!startParallel) {
-                        waitForStartedContainer(containerStartupService, startedContainerAliases, imagesStarting);
-                    }
-                }
-
-                if (startParallel) {
-                    waitForStartedContainer(containerStartupService, startedContainerAliases, imagesStarting);
-                }
-            }
-
-            portMappingPropertyWriteHelper.write();
-
-            if (follow) {
-                wait();
-            }
-
-            success = true;
-        } catch (InterruptedException e) {
-            log.warn("Interrupted");
-            Thread.currentThread().interrupt();
-            throw new MojoExecutionException("interrupted", e);
-        } catch (IOException e) {
-            throw new MojoExecutionException("I/O Error", e);
-        } finally {
-            shutdownExecutorService(executorService);
-
-            // Rollback if not all could be started
-            if (!success) {
-                log.error("Error occurred during container startup, shutting down...");
-                runService.stopStartedContainers(keepContainer, removeVolumes, autoCreateCustomNetworks, getGavLabel());
-            }
+        		if (!success) {
+        			log.error("Error occurred during container startup, shutting down...");
+        			runService.stopStartedContainers(keepContainer, removeVolumes, autoCreateCustomNetworks, getGavLabel());
+        		}
+        	}
+            
         }
     }
+
+	private boolean startImages(final ServiceHub hub, QueryService queryService, final RunService runService,
+			PortMapping.PropertyWriteHelper portMappingPropertyWriteHelper,
+			final ExecutorCompletionService<StartedContainer> containerStartupService)
+			throws DockerAccessException, MojoExecutionException, IOException, InterruptedException, ExecException {
+		boolean success;
+		final Set<String> imageAliases = new HashSet<>();
+		final Set<String> startedContainerAliases = new HashSet<>();
+		Queue<ImageConfiguration> imagesWaitingToStart = prepareStart(hub, queryService, runService, imageAliases);
+		final Queue<ImageConfiguration> imagesStarting = new ArrayDeque<>();
+		
+		if (follow) {
+			runService.addShutdownHookForStoppingContainers(keepContainer, removeVolumes, autoCreateCustomNetworks);
+		}
+		
+		while (!allImagesHaveStarted(imagesWaitingToStart, imagesStarting)) {
+			
+			final List<ImageConfiguration> imagesReadyToStart =
+					getImagesWhoseDependenciesHasStarted(imagesWaitingToStart, startedContainerAliases, imageAliases);
+			
+			for (final ImageConfiguration image : imagesReadyToStart) {
+				startImage(image, hub, containerStartupService, portMappingPropertyWriteHelper);
+				
+				imagesStarting.add(image);
+				imagesWaitingToStart.remove(image);
+				
+				if (!startParallel) {
+					waitForStartedContainer(containerStartupService, startedContainerAliases, imagesStarting);
+				}
+			}
+			if (startParallel) {
+				waitForStartedContainer(containerStartupService, startedContainerAliases, imagesStarting);
+			}
+		}
+		
+		portMappingPropertyWriteHelper.write();
+		if (follow) {
+			wait();
+		}
+		
+		success = true;
+		return success;
+	}
 
     private void waitForStartedContainer(
             final ExecutorCompletionService<StartedContainer> containerStartupService,
@@ -226,7 +222,7 @@ public class StartMojo extends AbstractDockerMojo {
     }
 
     // Check if we are done
-    private boolean hasBeenAllImagesStarted(Queue<ImageConfiguration> imagesWaitingToStart, Queue<ImageConfiguration> imagesStarting) {
+    private boolean allImagesHaveStarted(Queue<ImageConfiguration> imagesWaitingToStart, Queue<ImageConfiguration> imagesStarting) {
         return imagesWaitingToStart.isEmpty() && imagesStarting.isEmpty();
     }
 

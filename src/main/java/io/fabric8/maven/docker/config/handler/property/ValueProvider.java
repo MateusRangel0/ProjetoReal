@@ -126,64 +126,73 @@ public class ValueProvider {
      * If more than one value is specified, a merge policy as specified for the ConfigKey
      */
     private abstract class ValueExtractor<T> {
-        T getFromPreferredSource(String prefix, ConfigKey key, T fromConfig) {
-            if(propertyMode == PropertyMode.Skip) {
-                return fromConfig;
-            }
+    	
+        public T getFromPreferredSource(String prefix, ConfigKey key, T fromConfig) {
+        	
+        	T object = null;
+        	
+        	if (!propertyMode.equals(PropertyMode.Skip)) {
+        		List<T> values = new ArrayList<>();
 
-            List<T> values = new ArrayList<>();
+                // Find all non-null values, put into "values" with order based on the given propertyMode
+                T fromProperty = withPrefix(prefix, key, properties);
+                
+                // Not short-circuit
+                if (fromProperty != null || fromConfig != null) {
+                	
+                	if (propertyMode.equals(PropertyMode.Only)) {
+                		object = fromProperty;
+                	} else if (propertyMode.equals(PropertyMode.Override)) {
+                		if(fromProperty != null) {
+                            values.add(fromProperty);
+                        }
+                        if(fromConfig != null) {
+                            values.add(fromConfig);
+                        }
+                	} else if (propertyMode.equals(PropertyMode.Fallback)) {
+                		if(fromConfig != null) {
+                            values.add(fromConfig);
+                        }
+                        if(fromProperty != null) {
+                            values.add(fromProperty);
+                        }
+                	} else {
+                        throw new AssertionError("Invalid PropertyMode");
+                	}
 
-            // Find all non-null values, put into "values" with order based on the given propertyMode
-            T fromProperty = withPrefix(prefix, key, properties);
-
-            // Short-circuit
-            if(fromProperty == null && fromConfig == null) {
-                return null;
-            }
-
-            switch (propertyMode) {
-                case Only:
-                    return fromProperty;
-                case Override:
-                    if(fromProperty != null) {
-                        values.add(fromProperty);
-                    }
-                    if(fromConfig != null) {
-                        values.add(fromConfig);
-                    }
-                    break;
-                case Fallback:
-                    if(fromConfig != null) {
-                        values.add(fromConfig);
-                    }
-                    if(fromProperty != null) {
-                        values.add(fromProperty);
-                    }
-                    break;
-                default:
-                    throw new AssertionError("Invalid PropertyMode");
-            }
-
-            if(values.size() == 1) {
-                return values.get(0);
-            }
-
-            // values now has non-null values from both sources, in preference order.
-            // Let's merge according to the combine policy
-            ValueCombinePolicy combinePolicy = key.getValueCombinePolicy();
-            String overrideCombinePolicy = properties.getProperty(key.asPropertyKey(prefix) + "." + EnvUtil.PROPERTY_COMBINE_POLICY_SUFFIX);
-            if(overrideCombinePolicy != null) {
-                combinePolicy = ValueCombinePolicy.fromString(overrideCombinePolicy);
-            }
-
-            switch(combinePolicy) {
-                case Replace:
-                    return values.get(0);
-                case Merge:
-                    return merge(key, values);
-            }
-            return null;
+                	if (values.size() == 1) {
+                		object = values.get(0);
+                	} else {
+	                    object = getThroughCombinePolicy(prefix, key, values);
+                	}
+                }
+                
+        	} else {
+        		object = fromConfig;
+        	}
+        	
+        	return object;
         }
+
+		private T getThroughCombinePolicy(String prefix, ConfigKey key, List<T> values) {
+			// values now has non-null values from both sources, in preference order.
+			
+			T object = null;
+			
+			ValueCombinePolicy combinePolicy = key.getValueCombinePolicy();
+			String overrideCombinePolicy = properties.getProperty(key.asPropertyKey(prefix) + "." + EnvUtil.PROPERTY_COMBINE_POLICY_SUFFIX);
+			
+			if (overrideCombinePolicy != null) {
+			    combinePolicy = ValueCombinePolicy.fromString(overrideCombinePolicy);
+			}
+			
+			if (combinePolicy.equals(ValueCombinePolicy.Replace)) {
+				object = values.get(0);
+			} else if (combinePolicy.equals(ValueCombinePolicy.Merge)) {
+				object = merge(key, values);
+			}
+			return object;
+		}
 
         /**
          * Data type-specific extractor to read value from properties.

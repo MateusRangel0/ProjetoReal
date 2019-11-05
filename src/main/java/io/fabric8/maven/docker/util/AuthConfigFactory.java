@@ -197,72 +197,91 @@ public class AuthConfigFactory {
      */
     private AuthConfig createStandardAuthConfig(boolean isPush, Map authConfigMap, Settings settings, String user, String registry)
             throws MojoExecutionException {
-        AuthConfig ret;
+    	AuthConfig ret;
 
         // Check first for specific configuration based on direction (pull or push), then for a default value
-        for (LookupMode lookupMode : new LookupMode[] { getLookupMode(isPush), LookupMode.DEFAULT, LookupMode.REGISTRY}) {
-            // System properties docker.username and docker.password always take precedence
-            ret = getAuthConfigFromSystemProperties(lookupMode);
-            if (ret != null) {
-                log.debug("AuthConfig: credentials from system properties");
-                return ret;
-            }
-            // Check for openshift authentication either from the plugin config or from system props
-            if (lookupMode != LookupMode.REGISTRY) {
-                ret = getAuthConfigFromOpenShiftConfig(lookupMode, authConfigMap);
-                if (ret != null) {
-                    log.debug("AuthConfig: OpenShift credentials");
-                    return ret;
-                }
-            }
-            // Get configuration from global plugin config
-            ret = getAuthConfigFromPluginConfiguration(lookupMode, authConfigMap);
-            if (ret != null) {
-                log.debug("AuthConfig: credentials from plugin config");
-                return ret;
-            }
+        ret = getSpecificAuthConfig(isPush, authConfigMap);
+        
+        if (ret == null) {
+        	// These are lookups based on registry only, so the direction (push or pull) doesn't matter:
+        	
+        	// Now lets lookup the registry & user from ~/.m2/setting.xml
+        	ret = getAuthConfigFromSettings(settings, user, registry);
+        	
+        	if (ret != null) {
+        		getECRAuthConfig(registry, ret);
+        		log.debug("AuthConfig: credentials from ~/.m2/setting.xml");
+        	}
         }
-        // ===================================================================
-        // These are lookups based on registry only, so the direction (push or pull) doesn't matter:
-
-        // Now lets lookup the registry & user from ~/.m2/setting.xml
-        ret = getAuthConfigFromSettings(settings, user, registry);
-        if (ret != null) {
-            log.debug("AuthConfig: credentials from ~/.m2/setting.xml");
-            return ret;
-        }
-        // check EC2 instance role if registry is ECR
-        if (EcrExtendedAuth.isAwsRegistry(registry)) {
-            try {
-                ret = getAuthConfigFromEC2InstanceRole();
-            } catch (ConnectTimeoutException ex) {
-                log.debug("Connection timeout while retrieving instance meta-data, likely not an EC2 instance (%s)",
-                        ex.getMessage());
-            } catch (IOException ex) {
-                // don't make that an error since it may fail if not run on an EC2 instance
-                log.warn("Error while retrieving EC2 instance credentials: %s", ex.getMessage());
-            }
-            if (ret != null) {
-                log.debug("AuthConfig: credentials from EC2 instance role");
-                return ret;
-            }
-            try {
-                ret = getAuthConfigFromECSTaskRole();
-            } catch (ConnectTimeoutException ex) {
-                log.debug("Connection timeout while retrieving ECS meta-data, likely not an ECS instance (%s)",
-                        ex.getMessage());
-            } catch (IOException ex) {
-                log.warn("Error while retrieving ECS Task role credentials: %s", ex.getMessage());
-            }
-            if (ret != null) {
-                log.debug("AuthConfig: credentials from ECS Task role");
-                return ret;
-            }
-        }
-
-        // No authentication found
-        return null;
+        return ret;
     }
+
+	private AuthConfig getECRAuthConfig(String registry, AuthConfig ret) {
+    	// check EC2 instance role if registry is ECR
+		if (EcrExtendedAuth.isAwsRegistry(registry)) {
+			try {
+				ret = getAuthConfigFromEC2InstanceRole();
+			} catch (ConnectTimeoutException ex) {
+				log.debug("Connection timeout while retrieving instance meta-data, likely not an EC2 instance (%s)",
+						ex.getMessage());
+			} catch (IOException ex) {
+				// don't make that an error since it may fail if not run on an EC2 instance
+				log.warn("Error while retrieving EC2 instance credentials: %s", ex.getMessage());
+			}
+			
+			if (ret == null) {
+				log.debug("AuthConfig: credentials from EC2 instance role");
+			} else {
+				try {
+					ret = getAuthConfigFromECSTaskRole();
+				} catch (ConnectTimeoutException ex) {
+					log.debug("Connection timeout while retrieving ECS meta-data, likely not an ECS instance (%s)",
+							ex.getMessage());
+				} catch (IOException ex) {
+					log.warn("Error while retrieving ECS Task role credentials: %s", ex.getMessage());
+				}
+				
+				if (ret != null) {
+					log.debug("AuthConfig: credentials from ECS Task role");
+				}
+			}		
+		}
+		return ret;
+	}
+
+	private AuthConfig getSpecificAuthConfig(boolean isPush, Map authConfigMap) throws MojoExecutionException {
+		AuthConfig ret;
+		for (LookupMode lookupMode : new LookupMode[] { getLookupMode(isPush), LookupMode.DEFAULT, LookupMode.REGISTRY}) {
+            // System properties docker.username and docker.password always take precedence
+        	ret = buildAuthConfig(authConfigMap, lookupMode);
+        	if (ret != null) {
+        		return ret;
+        	}
+        }
+		return null;
+	}
+
+	private AuthConfig buildAuthConfig(Map authConfigMap, LookupMode lookupMode) throws MojoExecutionException {
+		AuthConfig authConfig = null;
+		
+		authConfig = getAuthConfigFromSystemProperties(lookupMode);
+		String configOrigins = "";
+		
+		if (authConfig == null) {
+			if (lookupMode != LookupMode.REGISTRY) {
+				authConfig = getAuthConfigFromOpenShiftConfig(lookupMode, authConfigMap);
+				configOrigins = "AuthConfig: OpenShift credentials";
+			} else {
+				authConfig = getAuthConfigFromPluginConfiguration(lookupMode, authConfigMap);
+				configOrigins = "AuthConfig: credentials from plugin config";
+			}
+		} else {
+			configOrigins = "AuthConfig: credentials from system properties";
+		}
+		
+		log.debug(configOrigins);
+		return authConfig;
+	}
 
     // ===================================================================================================
 

@@ -176,33 +176,18 @@ public class PropertyConfigHandler implements ExternalConfigHandler {
         if (config.isDefault()) {
             config = null;
         }
-
-        return new RunImageConfiguration.Builder()
-                .capAdd(valueProvider.getList(CAP_ADD, config == null ? null : config.getCapAdd()))
-                .capDrop(valueProvider.getList(CAP_DROP, config == null ? null : config.getCapDrop()))
-                .securityOpts(valueProvider.getList(SECURITY_OPTS, config == null ? null : config.getSecurityOpts()))
-                .cmd(extractArguments(valueProvider, CMD, config == null ? null : config.getCmd()))
-                .dns(valueProvider.getList(DNS, config == null ? null : config.getDns()))
-                .dependsOn(valueProvider.getList(DEPENDS_ON, config == null ? null : config.getDependsOn()))
-                .net(valueProvider.getString(NET, config == null ? null : config.getNetRaw()))
-                .network(extractNetworkConfig(config == null ? null : config.getNetworkingConfig(), valueProvider))
-                .dnsSearch(valueProvider.getList(DNS_SEARCH, config == null ? null : config.getDnsSearch()))
-                .domainname(valueProvider.getString(DOMAINNAME, config == null ? null : config.getDomainname()))
-                .entrypoint(extractArguments(valueProvider, ENTRYPOINT, config == null ? null : config.getEntrypoint()))
-                .env(CollectionUtils.mergeMaps(
-                        valueProvider.getMap(ENV_RUN, config == null ? null : config.getEnv()),
-                        valueProvider.getMap(ENV, Collections.<String, String>emptyMap())
-                ))
-                .labels(valueProvider.getMap(LABELS, config == null ? null : config.getLabels()))
-                .envPropertyFile(valueProvider.getString(ENV_PROPERTY_FILE, config == null ? null : config.getEnvPropertyFile()))
-                .extraHosts(valueProvider.getList(EXTRA_HOSTS, config == null ? null : config.getExtraHosts()))
-                .hostname(valueProvider.getString(HOSTNAME, config == null ? null : config.getHostname()))
-                .links(valueProvider.getList(LINKS, config == null ? null : config.getLinks()))
-                .memory(valueProvider.getLong(MEMORY, config == null ? null : config.getMemory()))
-                .memorySwap(valueProvider.getLong(MEMORY_SWAP, config == null ? null : config.getMemorySwap()))
-                .namingStrategy(valueProvider.getString(NAMING_STRATEGY, config == null || config.getNamingStrategy() == null ? null : config.getNamingStrategy().name()))
-                .exposedPropertyKey(valueProvider.getString(EXPOSED_PROPERTY_KEY, config == null ? null : config.getExposedPropertyKey()))
-                .portPropertyFile(valueProvider.getString(PORT_PROPERTY_FILE, config == null ? null : config.getPortPropertyFile()))
+        
+        RunImageConfiguration.Builder configBuilder = new RunImageConfiguration.Builder();
+        
+        setCapConfig(configBuilder, valueProvider, config);
+        
+        configBuilder.securityOpts(valueProvider.getList(SECURITY_OPTS, config == null ? null : config.getSecurityOpts()))
+                .cmd(extractArguments(valueProvider, CMD, config == null ? null : config.getCmd()));
+        
+        setNetworkConfig(configBuilder, valueProvider, config);
+        setMemoryConfig(configBuilder, valueProvider, config);
+        
+        configBuilder.portPropertyFile(valueProvider.getString(PORT_PROPERTY_FILE, config == null ? null : config.getPortPropertyFile()))
                 .ports(valueProvider.getList(PORTS, config == null ? null : config.getPorts()))
                 .shmSize(valueProvider.getLong(SHMSIZE, config == null ? null : config.getShmSize()))
                 .privileged(valueProvider.getBoolean(PRIVILEGED, config == null ? null : config.getPrivileged()))
@@ -215,13 +200,51 @@ public class PropertyConfigHandler implements ExternalConfigHandler {
                 .skip(valueProvider.getBoolean(SKIP_RUN, config == null ? null : config.getSkip()))
                 .imagePullPolicy(valueProvider.getString(IMAGE_PULL_POLICY_RUN, config == null ? null : config.getImagePullPolicy()))
                 .ulimits(extractUlimits(config == null ? null : config.getUlimits(), valueProvider))
-                .tmpfs(valueProvider.getList(TMPFS, config == null ? null : config.getTmpfs()))
-                .cpuShares(valueProvider.getLong(CPUSHARES, config == null ? null : config.getCpuShares()))
-                .cpus(valueProvider.getLong(CPUS, config == null ? null : config.getCpus()))
-                .cpuSet(valueProvider.getString(CPUSET, config == null ? null : config.getCpuSet()))
-                .readOnly(valueProvider.getBoolean(READ_ONLY, config == null ? null : config.getReadOnly()))
-                .autoRemove(valueProvider.getBoolean(AUTO_REMOVE, config == null ? null : config.getAutoRemove()))
-                .build();
+                .tmpfs(valueProvider.getList(TMPFS, config == null ? null : config.getTmpfs()));
+         		
+        setCpuConfig(configBuilder, valueProvider, config);
+         		
+        		configBuilder.readOnly(valueProvider.getBoolean(READ_ONLY, config == null ? null : config.getReadOnly()))
+                .autoRemove(valueProvider.getBoolean(AUTO_REMOVE, config == null ? null : config.getAutoRemove()));
+        		
+        return configBuilder.build();
+    }
+    
+    private void setCapConfig(RunImageConfiguration.Builder configBuilder, ValueProvider valueProvider, RunImageConfiguration config) {
+    	configBuilder.capAdd(valueProvider.getList(CAP_ADD, config == null ? null : config.getCapAdd()))
+        .capDrop(valueProvider.getList(CAP_DROP, config == null ? null : config.getCapDrop()));
+    }
+    
+    private void setNetworkConfig(RunImageConfiguration.Builder configBuilder, ValueProvider valueProvider, RunImageConfiguration config) {
+    	configBuilder.dns(valueProvider.getList(DNS, config == null ? null : config.getDns()))
+        .dependsOn(valueProvider.getList(DEPENDS_ON, config == null ? null : config.getDependsOn()))
+        .net(valueProvider.getString(NET, config == null ? null : config.getNetRaw()))
+        .network(extractNetworkConfig(config == null ? null : config.getNetworkingConfig(), valueProvider))
+        .dnsSearch(valueProvider.getList(DNS_SEARCH, config == null ? null : config.getDnsSearch()))
+        .domainname(valueProvider.getString(DOMAINNAME, config == null ? null : config.getDomainname()))
+        .entrypoint(extractArguments(valueProvider, ENTRYPOINT, config == null ? null : config.getEntrypoint()))
+        .env(CollectionUtils.mergeMaps(
+                valueProvider.getMap(ENV_RUN, config == null ? null : config.getEnv()),
+                valueProvider.getMap(ENV, Collections.<String, String>emptyMap())
+        ))
+        .labels(valueProvider.getMap(LABELS, config == null ? null : config.getLabels()))
+        .envPropertyFile(valueProvider.getString(ENV_PROPERTY_FILE, config == null ? null : config.getEnvPropertyFile()))
+        .extraHosts(valueProvider.getList(EXTRA_HOSTS, config == null ? null : config.getExtraHosts()))
+        .hostname(valueProvider.getString(HOSTNAME, config == null ? null : config.getHostname()));
+    }
+    
+    private void setMemoryConfig(RunImageConfiguration.Builder configBuilder, ValueProvider valueProvider, RunImageConfiguration config) {
+    	configBuilder.links(valueProvider.getList(LINKS, config == null ? null : config.getLinks()))
+        .memory(valueProvider.getLong(MEMORY, config == null ? null : config.getMemory()))
+        .memorySwap(valueProvider.getLong(MEMORY_SWAP, config == null ? null : config.getMemorySwap()))
+        .namingStrategy(valueProvider.getString(NAMING_STRATEGY, config == null || config.getNamingStrategy() == null ? null : config.getNamingStrategy().name()))
+        .exposedPropertyKey(valueProvider.getString(EXPOSED_PROPERTY_KEY, config == null ? null : config.getExposedPropertyKey()));
+    }
+    
+    private void setCpuConfig(RunImageConfiguration.Builder configBuilder, ValueProvider valueProvider, RunImageConfiguration config) {
+    	configBuilder.cpuShares(valueProvider.getLong(CPUSHARES, config == null ? null : config.getCpuShares()))
+    	.cpus(valueProvider.getLong(CPUS, config == null ? null : config.getCpus()))
+        .cpuSet(valueProvider.getString(CPUSET, config == null ? null : config.getCpuSet()));
     }
 
     private NetworkConfig extractNetworkConfig(NetworkConfig config, ValueProvider valueProvider) {
